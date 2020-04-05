@@ -6,18 +6,20 @@ if ( !defined('ABSPATH') )
 class WooACFTFields{
 
 	public $plugin_name = 'woo_actf';    
-	private $address_fields_match = [
-		'shipping_city'=> 'CITY',
-		'shipping_address_1'=> 'ADDRESS',
-		'shipping_postcode'=> 'ZIP_CODE',
-		'shipping_state'=> 'STATE',
+	private $shipping_fields_match = [
+		'city'=> 'CITY',
+		'address_1'=> 'ADDRESS',
+		'postcode'=> 'ZIP_CODE',
+		'state'=> 'STATE', 
+	];
+	private $address_fields_match = [		
 		'state'=> 'BILLING_STATE',
 		'postcode'=> 'BILLING_ZIP_CODE',
 		'address_1'=> 'BILLING_ADDRESS',
 		'city'=> 'BILLING_CITY',
 		//'total' => $order->get_total(),
 		'sku' => 'SKU',
-		'tag' => 'PRODUCT_TAG',
+		//'tag' => 'PRODUCT_TAG',
 		'customer_amount_purchased' => 'CUSTOMER_AMOUNT_PURCHASED',
 		'customer_total_purchased' => 'CUSTOMER_TOTAL_PURCHASED' 
 	];
@@ -37,9 +39,10 @@ class WooACFTFields{
 		Activating a new my sizes tab in the account page
 		----------------------**/ 
 
-		add_action( 'init',array($this, 'woo_init' ));
+		//add_action( 'init',array($this, 'woo_init' ));
 		add_action( 'woocommerce_product_options_general_product_data',array($this,  'product_create_custom_field' ));
 		add_action( 'woocommerce_process_product_meta', array($this, 'product_save_custom_field' ));
+		add_action( 'woocommerce_order_status_completed', array($this,'wc_send_order' ),10,1);
 
 		add_filter( 'woocommerce_get_sections_integration', array($this,'acft_fields_fn' ));
 		add_filter( 'woocommerce_get_settings_integration', array($this,'wcslider_all_settings'), 10, 2 );
@@ -48,9 +51,7 @@ class WooACFTFields{
 	}
 	
 	public function woo_init(){
-		$this->send_data();
-		/*var_dump( $this->get_customer_total_order() ); die;*/
-		//get_option( 'woo_ac_key'); die;
+		//$this->send_data();		 
 	}
 
 	public function product_create_custom_field() {
@@ -91,7 +92,7 @@ class WooACFTFields{
 			$order_total++;
 		}
 
-		return array(wc_price($total), $order_total);
+		return array(strip_tags(number_format($total,2)), $order_total);
 	}
 
 	public function add_active_campaign_setting( $settings ) {
@@ -102,14 +103,20 @@ class WooACFTFields{
 
 			if ( isset( $section['id'] ) && 'general_options' == $section['id'] &&
 				isset( $section['type'] ) && 'sectionend' == $section['type'] ) {
-
 				$updated_settings[] = array(
-					'name'     => __( 'Active Campaign Key', 'woo_actf' ), 
-					'id'       => 'woo_ac_key',
+					'name'     => __( 'Active Campaign Account Name', 'woo_actf' ), 
+					'id'       => 'woo_ac_account_name',
 					'type'     => 'text',
 					'css'      => 'min-width:300px;', 
-					'desc'     => __( 'Insert here your Active Campaign Key', 'woo_actf' ),
+					'desc'     => __( 'Ej: myaccountname', 'woo_actf' ),
 				);
+			$updated_settings[] = array(
+				'name'     => __( 'Active Campaign Key', 'woo_actf' ), 
+				'id'       => 'woo_ac_key',
+				'type'     => 'text',
+				'css'      => 'min-width:300px;', 
+				'desc'     => __( 'Search in your Active Campaign Account: Settings -> Developer', 'woo_actf' ),
+			);
 		}
 
 		$updated_settings[] = $section;
@@ -119,9 +126,13 @@ class WooACFTFields{
 }
 
 
-public function send_data(){
+public function wc_send_order($order_id){
+	
 
-	$order_id = 52;
+	if(empty($woo_actf_key = get_option( 'woo_ac_key'))) return;
+	if(empty($woo_actf_accountname = get_option( 'woo_ac_account_name'))) return;
+
+
 	$arr_order = [];
 	$skus = [];
 	$tags = [];
@@ -131,60 +142,54 @@ public function send_data(){
 	$items = $order->get_items();
 	$user_orders_data = $this->get_customer_total_order();
 	$address = $order->get_address();
-
+	$shipping = $order->get_address('shipping');
 
 	$post_data = array(
-		'api_key'      => 'ba85018585854429fe6ee4dc90fabb54ca36931ca11a838370d7629be65868028baa75bc', 
+		'api_key'      => trim($woo_actf_key), 
 		'api_action'   => 'contact_sync', 
 		'api_output'   => 'json',
 		'email'                    => $address['email'],
 		'first_name'               => $address['first_name'],
 		'last_name'                => $address['last_name'], 
 		'phone'                    => $address['phone'],
-		'customer_acct_name'       => $address['address_1'].', '.$address['state'],
-		'tags'                     => 'api'
+		'customer_acct_name'       => get_bloginfo( 'name'),	 
 
 	);
 
 	foreach ( $items as $item ) {
-		$product = $order->get_product_from_item( $item );
-	//	$product = wc_get_product( $item->get_product_id() );
+		$product = $order->get_product_from_item( $item ); 
 		$skus[] = $product->get_sku(); 
 		$tags[] = $product->get_meta( 'prod_tag' ); 
 	}
 
 	$arr_order['total'] = $order->get_total();
 	$arr_order['sku'] = implode(', ', $skus);
-	$arr_order['tag'] = implode(', ', $tags);
+	$post_data['tags'] = implode(', ', $tags);
 	$arr_order['customer_total_purchased'] = $user_orders_data[0];
 	$arr_order['customer_amount_purchased'] = $user_orders_data[1];
 
+ 
 
-	
-	if(is_admin()) return;
 
-	//echo '<pre>',print_r($order->get_address()); die;
-	//if(empty(get_option( 'woo_ac_key'))) return;
-
-	// By default, this sample code is designed to get the result from your ActiveCampaign installation and print out the result
-	$url = 'http://3aces66266.api-us1.com';
-
+	$url = 'http://'.$woo_actf_accountname.'.api-us1.com';
 
 
 	foreach ($arr_order as $key => $val) {
-		if($this->address_fields_match[$key]){
+		if(!empty($val) and $this->address_fields_match[$key]){
 			$post_data['field[%'.$this->address_fields_match[$key].'%,0]' ] = $val;
 		}
 	}
-
+	foreach ($shipping as $key => $val) {
+		if(!empty($val) and $this->shipping_fields_match[$key]){
+			$post_data['field[%'.$this->shipping_fields_match[$key].'%,0]' ] = $val;
+		}
+	}
 	foreach ($address as $key => $val) {
-		if($this->address_fields_match[$key]){
+		if(!empty($val) and $this->address_fields_match[$key]){
 			$post_data['field[%'.$this->address_fields_match[$key].'%,0]' ] = $val;
 		}
-	}
+	} 
 
-	echo '<pre>',print_r($post_data); die;
- 
 	$api = $url . '/admin/api.php?api_action=contact_sync';
 
 	$request = curl_init($api);  
@@ -199,10 +204,7 @@ public function send_data(){
 
 	if ( !$response ) {
 		die(__('Nothing was returned. Do you have a connection to Email Marketing server?','woo_actf'));
-	}
-
-	var_dump($response);
-	die;
+	} 
 }
 
 

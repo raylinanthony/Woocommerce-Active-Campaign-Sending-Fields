@@ -13,7 +13,7 @@
  * Description:       Sending data to Active Campaing Account
  * Version:           1.0.0
  * Requires at least: 5.2
- * Requires PHP:      7.2
+ * Requires PHP:      5.2
  * Author:            Raylin Aquino
  * Author URI:        https://raylinaquino.com
  * Text Domain:       woo_actf
