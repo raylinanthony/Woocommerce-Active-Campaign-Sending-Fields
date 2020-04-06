@@ -17,8 +17,7 @@ class WooACFTFields{
 		'postcode'=> 'BILLING_ZIP_CODE',
 		'address_1'=> 'BILLING_ADDRESS',
 		'city'=> 'BILLING_CITY',
-		//'total' => $order->get_total(),
-		'sku' => 'SKU',
+		//'total' => $order->get_total(), 
 		//'tag' => 'PRODUCT_TAG',
 		'customer_amount_purchased' => 'CUSTOMER_AMOUNT_PURCHASED',
 		'customer_total_purchased' => 'CUSTOMER_TOTAL_PURCHASED' 
@@ -42,11 +41,10 @@ class WooACFTFields{
 		//add_action( 'init',array($this, 'woo_init' ));
 		add_action( 'woocommerce_product_options_general_product_data',array($this,  'product_create_custom_field' ));
 		add_action( 'woocommerce_process_product_meta', array($this, 'product_save_custom_field' ));
-		add_action( 'woocommerce_order_status_completed', array($this,'wc_send_order' ),10,1);
+		add_action( 'woocommerce_order_status_processing', array($this,'wc_send_order' ),10,1);
 
-		add_filter( 'woocommerce_get_sections_integration', array($this,'acft_fields_fn' ));
-		add_filter( 'woocommerce_get_settings_integration', array($this,'wcslider_all_settings'), 10, 2 );
-		add_filter( 'woocommerce_general_settings',  array($this,'add_active_campaign_setting') );
+		//add_filter( 'woocommerce_get_sections_integration', array($this,'acft_fields_fn' )); 
+		add_filter( 'woocommerce_get_settings_general',  array($this,'add_active_campaign_setting') );
 
 	}
 	
@@ -75,13 +73,14 @@ class WooACFTFields{
 		$product->save();
 	}
 
-	public function get_customer_total_order() {
+	public function get_customer_total_order($user_id) {
+ 
 		$customer_orders = get_posts( array(
 			'numberposts' => - 1,
 			'meta_key'    => '_customer_user',
-			'meta_value'  => get_current_user_id(),
+			'meta_value'  => $user_id,
 			'post_type'   => array( 'shop_order' ),
-			'post_status' => array( 'wc-completed' )
+			'post_status' => array( 'wc-processing', 'wc-completed' )
 		) );
 
 		$total = 0;
@@ -117,6 +116,12 @@ class WooACFTFields{
 				'css'      => 'min-width:300px;', 
 				'desc'     => __( 'Search in your Active Campaign Account: Settings -> Developer', 'woo_actf' ),
 			);
+				$updated_settings[] = array(
+				'name'     => __( 'Active Campaign Default Tag', 'woo_actf' ), 
+				'id'       => 'woo_ac_tag',
+				'type'     => 'text',
+				'css'      => 'min-width:300px;',  
+			);
 		}
 
 		$updated_settings[] = $section;
@@ -132,15 +137,15 @@ public function wc_send_order($order_id){
 	if(empty($woo_actf_key = get_option( 'woo_ac_key'))) return;
 	if(empty($woo_actf_accountname = get_option( 'woo_ac_account_name'))) return;
 
-
+	$woo_ac_tag = get_option( 'woo_ac_tag');
 	$arr_order = [];
 	$skus = [];
-	$tags = [];
+	$tags = [$woo_ac_tag];
 
 
 	$order = new WC_Order( $order_id );
 	$items = $order->get_items();
-	$user_orders_data = $this->get_customer_total_order();
+	$user_orders_data = $this->get_customer_total_order($order->get_user_id());
 	$address = $order->get_address();
 	$shipping = $order->get_address('shipping');
 
@@ -158,12 +163,11 @@ public function wc_send_order($order_id){
 
 	foreach ( $items as $item ) {
 		$product = $order->get_product_from_item( $item ); 
-		$skus[] = $product->get_sku(); 
+		$tags[] = $product->get_sku(); 
 		$tags[] = $product->get_meta( 'prod_tag' ); 
 	}
 
-	$arr_order['total'] = $order->get_total();
-	$arr_order['sku'] = implode(', ', $skus);
+	$arr_order['total'] = $order->get_total(); 
 	$post_data['tags'] = implode(', ', $tags);
 	$arr_order['customer_total_purchased'] = $user_orders_data[0];
 	$arr_order['customer_amount_purchased'] = $user_orders_data[1];
@@ -192,6 +196,8 @@ public function wc_send_order($order_id){
 
 	$api = $url . '/admin/api.php?api_action=contact_sync';
 
+// echo '<pre>', print_r($post_data); die;
+	
 	$request = curl_init($api);  
 	curl_setopt($request, CURLOPT_HEADER, 0);  
 	curl_setopt($request, CURLOPT_RETURNTRANSFER, 1);  
