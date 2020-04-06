@@ -19,7 +19,7 @@ class WooACFTFields{
 		'city'=> 'BILLING_CITY',
 		//'total' => $order->get_total(), 
 		//'tag' => 'PRODUCT_TAG',
-		'customer_amount_purchased' => 'CUSTOMER_AMOUNT_PURCHASED',
+		'customer_amount_purchased' => 'PURCHASE_FREQUENCY',
 		'customer_total_purchased' => 'CUSTOMER_TOTAL_PURCHASED' 
 	];
 
@@ -165,14 +165,20 @@ public function wc_send_order($order_id){
 		$product = $order->get_product_from_item( $item ); 
 		$tags[] = $product->get_sku(); 
 		$tags[] = $product->get_meta( 'prod_tag' ); 
+		$cats  = get_the_terms( $product->get_id(), 'product_cat' );
+
+		foreach ((array) $cats as $cat) {
+			$tags[] = $cat->name;
+		} 
 	}
 
+	$tags = array_unique($tags);
 	$arr_order['total'] = $order->get_total(); 
 	$post_data['tags'] = implode(', ', $tags);
 	$arr_order['customer_total_purchased'] = $user_orders_data[0];
 	$arr_order['customer_amount_purchased'] = $user_orders_data[1];
 
- 
+ 	
 
 
 	$url = 'http://'.$woo_actf_accountname.'.api-us1.com';
@@ -196,7 +202,7 @@ public function wc_send_order($order_id){
 
 	$api = $url . '/admin/api.php?api_action=contact_sync';
 
-// echo '<pre>', print_r($post_data); die;
+//echo '<pre>', print_r($post_data); die;
 	
 	$request = curl_init($api);  
 	curl_setopt($request, CURLOPT_HEADER, 0);  
